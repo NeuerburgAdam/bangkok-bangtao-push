@@ -5,7 +5,8 @@ const http = require("http");
 const webpush = require("web-push");
 const { createClient } = require("redis");
 
-const { VAPID_PUBLIC, VAPID_PRIVATE, VAPID_SUBJECT = "mailto:trip@example.com", TICK_KEY, REDIS_URL, PORT = 10000 } = process.env;
+const { VAPID_PUBLIC, VAPID_PRIVATE, VAPID_SUBJECT = "mailto:trip@example.com", TICK_KEY, REDIS_URL, PORT = 10000, TRIP_PINS = "" } = process.env;
+const PINS = new Set(TRIP_PINS.split(",").map(s => s.trim()).filter(Boolean));
 const ORIGINS = ["https://neuerburgadam.github.io", "http://localhost:8787"];
 webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE);
 
@@ -19,7 +20,7 @@ const STALE_MS = 2 * 60 * 60 * 1000; // never send reminders more than 2h late
 
 function send(res, code, body, origin) {
   const h = { "Content-Type": "application/json" };
-  if (ORIGINS.includes(origin)) Object.assign(h, { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Headers": "content-type", "Access-Control-Allow-Methods": "GET,POST,OPTIONS", Vary: "Origin" });
+  if (ORIGINS.includes(origin)) Object.assign(h, { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Headers": "content-type, x-pin", "Access-Control-Allow-Methods": "GET,POST,OPTIONS", Vary: "Origin" });
   res.writeHead(code, h); res.end(JSON.stringify(body));
 }
 function readJSON(req) {
@@ -34,6 +35,22 @@ async function push(id, payload) {
   catch (e) { if (e.statusCode === 404 || e.statusCode === 410) { await db.del(`sub:${id}`); await db.sRem("devices", id); return "expired"; } throw e; }
 }
 
+// Shared trip state: { key: { v, t } } merged last-writer-wins by timestamp t.
+function mergeItems(a = {}, b = {}) {
+  const out = { ...a };
+  for (const [k, x] of Object.entries(b)) if (x && typeof x.t === "number" && (!out[k] || x.t > out[k].t)) out[k] = x;
+  return out;
+}
+const fails = new Map(); // ip -> { n, until }
+function pinOK(req) {
+  const ip = (req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+  const f = fails.get(ip);
+  if (f && f.until > Date.now()) return "locked";
+  if (PINS.has(String(req.headers["x-pin"] || ""))) { fails.delete(ip); return "ok"; }
+  const n = (f?.n || 0) + 1; fails.set(ip, { n, until: n >= 8 ? Date.now() + 15 * 60e3 : 0 });
+  return "bad";
+}
+
 http.createServer(async (req, res) => {
   const origin = req.headers.origin, url = new URL(req.url, "http://x");
   try {
@@ -42,6 +59,20 @@ http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true }, origin);
     if (req.method === "GET" && url.pathname === "/vapid") return send(res, 200, { key: VAPID_PUBLIC }, origin);
 
+    if (url.pathname === "/trip") {
+      const ok = pinOK(req);
+      if (ok !== "ok") return send(res, ok === "locked" ? 429 : 401, { error: ok === "locked" ? "too many attempts, try again in 15 minutes" : "wrong code" }, origin);
+      const cur = JSON.parse((await db.get("trip:shared")) || "{}");
+      if (req.method === "GET") return send(res, 200, { items: cur }, origin);
+      if (req.method === "POST") {
+        const { items } = await readJSON(req);
+        if (!items || typeof items !== "object") return send(res, 400, { error: "bad request" }, origin);
+        const merged = mergeItems(cur, items);
+        const size = JSON.stringify(merged).length; if (size > 200e3) return send(res, 413, { error: "too large" }, origin);
+        await db.set("trip:shared", JSON.stringify(merged));
+        return send(res, 200, { items: merged }, origin);
+      }
+    }
     if (req.method === "POST" && url.pathname === "/subscribe") {
       const { id, sub } = await readJSON(req);
       if (!ID_RE.test(id || "") || !sub?.endpoint) return send(res, 400, { error: "bad request" }, origin);
