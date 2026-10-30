@@ -35,9 +35,21 @@
 	 * commission due dates are both ahead of today, and reading "Yesterday"
 	 * against a payment due next month is worse than showing no date at all.
 	 */
+	/* Server times are saved in UTC; show them in the viewer's own time zone.
+	   A bare date, or a date at exactly midnight, is a calendar day someone picked
+	   (a due date), so it stays on that day wherever the viewer is. */
+	function srvDate(d) {
+		var s = String(d || '').trim();
+		if (!s) return new Date(NaN);
+		if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s + 'T12:00:00');
+		var m = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)$/);
+		if (m) return /^00:00(?::00)?$/.test(m[2]) ? new Date(m[1] + 'T12:00:00') : new Date(m[1] + 'T' + m[2] + 'Z');
+		return new Date(s.replace(' ', 'T'));
+	}
+	function isDay(d) { return /^\d{4}-\d{2}-\d{2}(?:[ T]00:00(?::00)?)?$/.test(String(d || '').trim()); }
 	function when(d) {
 		if (!d) return '';
-		var t = new Date(String(d).replace(' ', 'T'));
+		var t = srvDate(d);
 		if (isNaN(t)) return '';
 
 		function midnight(x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); }
@@ -418,8 +430,10 @@
 			return '<div class="axh-col" data-stage="' + st.key + '">' +
 				'<div class="axh-col__h"><b>' + st.label + '</b><span>' + (val ? money(val) : inCol.length) + '</span></div>' +
 				inCol.map(function (l) {
-					var due = l.next_action_at ? new Date(String(l.next_action_at).replace(' ', 'T')) : null;
-					var late = due && !isNaN(due) && due < new Date();
+					var due = l.next_action_at ? srvDate(l.next_action_at) : null;
+					var late = due && !isNaN(due) && (isDay(l.next_action_at)
+						? new Date(due.getFullYear(), due.getMonth(), due.getDate()) < new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+						: due < new Date());
 					return '<div class="axh-kc" draggable="true" data-id="' + l.id + '" data-open="' + l.id + '" tabindex="0" role="link" aria-label="Open ' + esc(l.company) + '">' +
 						'<div class="axh-kc__t">' + esc(l.company) + '</div>' +
 						'<div class="axh-kc__s">' + esc(l.contact_name || 'No contact yet') + (l.city ? ' · ' + esc(l.city) : '') + '</div>' +
@@ -3169,10 +3183,10 @@
 	function fmtDate(d, withTime) {
 		if (!d) return '';
 		// A bare date is a calendar day, not UTC midnight (which shows as the day before in the US).
-		var t = new Date(/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? d + 'T12:00:00' : String(d).replace(' ', 'T'));
+		var t = srvDate(d);
 		if (isNaN(t)) return String(d);
 		var o = { month: 'long', day: 'numeric', year: 'numeric' };
-		if (withTime) { o.hour = 'numeric'; o.minute = '2-digit'; }
+		if (withTime && !isDay(d)) { o.hour = 'numeric'; o.minute = '2-digit'; }
 		return t.toLocaleString('en-US', o);
 	}
 
