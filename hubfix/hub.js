@@ -81,6 +81,8 @@
 			brief: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
 			plus: '<path d="M12 5v14M5 12h14"/>',
 			back: '<path d="M19 12H5M11 18l-6-6 6-6"/>',
+			msg: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12z"/>',
+			cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
 			mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 6-10 7L2 6"/>',
 			phone: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.8 2z"/>',
 			globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/>',
@@ -181,7 +183,7 @@
 	document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
 	/* Pipeline cards open with Enter, like a link. */
 	document.addEventListener('keydown', function (e) {
-		if (e.key !== 'Enter' || !e.target.classList || !e.target.classList.contains('axh-kc')) return;
+		if (e.key !== 'Enter' || !e.target.classList || !e.target.classList.contains('axh-kc') || !e.target.getAttribute('data-open')) return;
 		location.hash = '#/lead/' + e.target.getAttribute('data-open');
 	});
 
@@ -401,6 +403,8 @@
 					return '<option value="' + esc(k) + '"' + (S.srcFilter === k ? ' selected' : '') + '>' + esc(k) + ' (' + sources[k] + ')</option>';
 				}).join('') + '</select>' : '') +
 			((arch || S.showArchived) ? '<button class="axh-btn axh-btn--quiet" data-toggle-archived>' + (S.showArchived ? 'Back to pipeline' : 'Archived (' + arch + ')') + '</button>' : '') +
+			(!S.listMode && !S.showArchived ? '<select class="axh-select" data-fp-sort aria-label="Sort cards">' + [['activity', 'Recent activity'], ['next', 'Next step due'], ['value', 'Highest value'], ['stage', 'Longest in stage']].map(function (o) {
+				return '<option value="' + o[0] + '"' + (S.pl.sort === o[0] ? ' selected' : '') + '>Sort: ' + o[1] + '</option>'; }).join('') + '</select>' : '') +
 			'<button class="axh-btn axh-btn--ghost" data-toggle-view>' + (S.listMode ? 'Board view' : 'List view') + '</button>' +
 			'<button class="axh-btn axh-btn--primary axh-only-sm" data-new>' + icon('plus', 15) + ' New lead</button></div></div>';
 
@@ -408,6 +412,7 @@
 			? empty('Nothing archived', 'Leads you archive leave the pipeline but stay on record here.', '')
 			: empty('Nothing here yet', 'Add your first prospect — company name is all you need to start.', 'Add a lead')) + '</div>';
 
+		if (!S.showArchived && S.flow.board) html += fpStrip(leads);
 		if (S.listMode) {
 			html += '<div class="axh-card"><table class="axh-table"><thead><tr><th>Company</th>' + (mgr ? '<th>Owner</th>' : '') + '<th>Stage</th><th>Registration</th><th>Source</th><th class="num">Value</th><th>Next action</th><th>Updated</th></tr></thead><tbody>' +
 				leads.map(function (l) {
@@ -424,29 +429,7 @@
 			return html;
 		}
 
-		html += '<div class="axh-board">' + S.boot.stages.map(function (st) {
-			var inCol = leads.filter(function (l) { return l.stage === st.key; });
-			var val = inCol.reduce(function (a, l) { return a + Number(l.est_value || 0); }, 0);
-			return '<div class="axh-col" data-stage="' + st.key + '">' +
-				'<div class="axh-col__h"><b>' + st.label + '</b><span>' + (val ? money(val) : inCol.length) + '</span></div>' +
-				inCol.map(function (l) {
-					var due = l.next_action_at ? srvDate(l.next_action_at) : null;
-					var late = due && !isNaN(due) && (isDay(l.next_action_at)
-						? new Date(due.getFullYear(), due.getMonth(), due.getDate()) < new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
-						: due < new Date());
-					return '<div class="axh-kc" draggable="true" data-id="' + l.id + '" data-open="' + l.id + '" tabindex="0" role="link" aria-label="Open ' + esc(l.company) + '">' +
-						'<div class="axh-kc__t">' + esc(l.company) + '</div>' +
-						'<div class="axh-kc__s">' + esc(l.contact_name || 'No contact yet') + (l.city ? ' · ' + esc(l.city) : '') + '</div>' +
-						(mgr && l.rep_name ? '<div class="axh-kc__s">' + icon('users', 12) + ' ' + esc(l.rep_name) + '</div>' : '') +
-						(l.source ? '<div class="axh-kc__s axh-kc__src">' + icon(l.has_tool_results ? 'spark' : 'link', 12) + ' ' + esc(srcBase(l.source)) + '</div>' : '') +
-						(l.next_action ? '<div class="axh-kc__na' + (late ? ' is-late' : '') + '">' + icon('clock', 12) + ' ' + esc(l.next_action) + (l.next_action_at ? ' · ' + when(l.next_action_at) : '') + '</div>' : '') +
-						'<div class="axh-kc__f">' + (l.reg_status === 'draft'
-							? '<button class="axh-kc__reg" data-register="' + l.id + '">' + icon('flag', 12) + ' Register</button>'
-							: regBadge(l.reg_status)) +
-						'<span class="axh-kc__v">' + (Number(l.est_value) ? money(l.est_value) : '') + '</span></div>' +
-						'<div class="axh-kc__acts"><button data-edit="' + l.id + '">Edit</button><span>Open ' + icon('back', 11) + '</span></div></div>';
-				}).join('') + '</div>';
-		}).join('') + '</div>';
+		html += fpBoardHtml(leads, mgr);
 		return html;
 	}
 
@@ -623,13 +606,9 @@
 
 			'<div><div class="axh-card"><div class="axh-card__h"><h3>Move the deal</h3></div>' + stageCard(l, mgr, won, pendingWin) + '</div>' +
 
-			'<div class="axh-card" style="margin-top:16px"><div class="axh-card__h"><h3>Follow-ups</h3>' +
-			'<button data-add-task="' + l.id + '">Add</button></div>' +
-			(d.tasks && d.tasks.length ? '<ul class="axh-list">' + d.tasks.map(function (t) {
-				return '<li><button class="axh-chip' + (t.done_at ? ' is-on' : '') + '" data-task="' + t.id + '" aria-label="' + (t.done_at ? 'Mark not done: ' : 'Mark done: ') + esc(t.title) + '" style="padding:4px 8px">' + icon('check', 13) + '</button>' +
-					'<div class="axh-list__t"><b style="' + (t.done_at ? 'text-decoration:line-through;color:var(--gray)' : '') + '">' + esc(t.title) + '</b>' +
-					'<span>' + (t.due_at ? when(t.due_at) : 'No date') + '</span></div></li>';
-			}).join('') + '</ul>' : '<p style="color:var(--gray);font-size:13.5px">No follow-ups scheduled.</p>') +
+			'<div class="axh-card" style="margin-top:16px"><div class="axh-card__h"><h3>Next steps</h3>' +
+			'<button data-add-task="' + l.id + '">' + icon('plus', 13) + ' Schedule</button></div>' +
+			fuLeadList(d.tasks, l.id, l.stage) +
 			'</div>' +
 
 			'<div class="axh-card" style="margin-top:16px"><div class="axh-card__h"><h3>Details</h3></div>' +
@@ -1933,26 +1912,861 @@
 
 	/* ---------------------------------------------------------- tasks */
 
-	function viewTasks() {
-		var open = S.tasks.filter(function (t) { return !t.done_at; });
-		var done = S.tasks.filter(function (t) { return t.done_at; }).slice(0, 20);
-		var byLead = {};
-		S.leads.forEach(function (l) { byLead[l.id] = l.company; });
+	/* =================================================== follow-ups (1.8) */
+	/* Typed follow-ups with times, priority, outcomes, snooze, bulk actions,
+	   a work-through queue and "deals with no next step" — the same toolkit
+	   reps know from Pipedrive, HubSpot and Close, wired to this Hub. */
 
-		function row(t) {
-			return '<li><button class="axh-chip' + (t.done_at ? ' is-on' : '') + '" data-task="' + t.id + '" aria-label="' + (t.done_at ? 'Mark not done: ' : 'Mark done: ') + esc(t.title) + '" style="padding:4px 8px">' + icon('check', 13) + '</button>' +
-				'<div class="axh-list__t"><b style="' + (t.done_at ? 'text-decoration:line-through;color:var(--gray)' : '') + '">' + esc(t.title) + '</b>' +
-				'<span>' + (t.lead_id && byLead[t.lead_id] ? esc(byLead[t.lead_id]) + ' · ' : '') + (t.due_at ? when(t.due_at) : 'No date') + '</span></div>' +
-				(t.lead_id ? '<a class="axh-list__r" href="#/lead/' + t.lead_id + '">Open</a>' : '') + '</li>';
+	var FT = {
+		call: { l: 'Call', i: 'phone', c: '#0E7C66', o: ['Connected', 'Left voicemail', 'No answer', 'Meeting booked', 'Not interested'] },
+		email: { l: 'Email', i: 'mail', c: '#046BD2', o: ['Sent', 'Replied', 'No reply yet', 'Bounced'] },
+		text: { l: 'Text', i: 'msg', c: '#7C3AED', o: ['Sent', 'Replied', 'No reply yet'] },
+		meeting: { l: 'Meeting', i: 'cal', c: '#B45309', o: ['Held', 'Rescheduled', 'No-show', 'Proposal requested'] },
+		todo: { l: 'To-do', i: 'check', c: '#475467', o: ['Done'] }
+	};
+	var FTK = ['call', 'email', 'text', 'meeting', 'todo'];
+	S.fu = S.fu || { tab: 'focus', type: '', rep: '', q: '', sel: {} };
+	S.flow = S.flow || { tasks: [], done: [], doneWeek: 0, board: null, ok: false };
+
+	function ft(t) { return FT[t && t.type] || FT.todo; }
+	function pad2(n) { return ('0' + n).slice(-2); }
+	function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+	function dayStart(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+	function addDays(d, n) { var x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+	function nextMonday() { var d = dayStart(new Date()), k = (8 - d.getDay()) % 7 || 7; return addDays(d, k); }
+	function utcStamp(d) {
+		return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()) + ' ' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes()) + ':00';
+	}
+	function fuDue(t) { return t && t.due_at ? srvDate(t.due_at) : null; }
+	function fuTimed(t) { return !!(t && t.due_at && (Number(t.timed) || !isDay(t.due_at))); }
+	function fuClock(d) { return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+
+	/* Where a follow-up sits on the calendar, relative to now. */
+	function fuBucket(t) {
+		var d = fuDue(t);
+		if (!d || isNaN(d)) return 'none';
+		var today = dayStart(new Date()), day = dayStart(d), diff = Math.round((day - today) / 86400000);
+		if (fuTimed(t) ? d < new Date() : diff < 0) return 'overdue';
+		if (diff === 0) return 'today';
+		if (diff === 1) return 'tomorrow';
+		if (diff < 7) return 'week';
+		return 'later';
+	}
+	function fuDueText(t) {
+		var d = fuDue(t);
+		if (!d || isNaN(d)) return 'No date';
+		var b = fuBucket(t), clock = fuTimed(t) ? fuClock(d) : '';
+		if (b === 'overdue') {
+			var days = Math.round((dayStart(new Date()) - dayStart(d)) / 86400000);
+			return days <= 0 ? 'Overdue · ' + clock : days + (days === 1 ? ' day' : ' days') + ' overdue';
+		}
+		return when(t.due_at) + (clock ? ' · ' + clock : '');
+	}
+
+	function fuLoad(withBoard) {
+		var jobs = [api('/flow/tasks'), api('/flow/tasks?status=done')];
+		if (withBoard) jobs.push(api('/flow/board'));
+		return Promise.all(jobs).then(function (r) {
+			S.flow.tasks = r[0].tasks || [];
+			S.flow.doneWeek = r[0].done_week || 0;
+			S.flow.done = r[1].tasks || [];
+			if (withBoard) S.flow.board = r[2];
+			S.flow.ok = true;
+		}, function () {
+			// The server module not answering should never cost a page: fall back to the basic list.
+			S.flow.ok = false;
+			S.flow.tasks = (S.tasks || []).filter(function (t) { return !t.done_at; });
+			S.flow.done = (S.tasks || []).filter(function (t) { return t.done_at; });
+		});
+	}
+	function fuBoard() {
+		return api('/flow/board').then(function (b) { S.flow.board = b; }, function () { S.flow.board = null; });
+	}
+
+	function fuLeadOf(t) { return t.lead_id ? (S.leads || []).filter(function (l) { return String(l.id) === String(t.lead_id); })[0] || null : null; }
+
+	function fuGcal(t) {
+		var d = fuDue(t);
+		if (!d || isNaN(d)) return '';
+		var f = function (x) { return x.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); };
+		var dates = fuTimed(t) ? f(d) + '/' + f(new Date(d.getTime() + 30 * 60000)) : ymd(d).replace(/-/g, '') + '/' + ymd(addDays(d, 1)).replace(/-/g, '');
+		var lead = fuLeadOf(t);
+		var details = [t.notes || '', lead ? lead.company + (lead.contact_name ? ' · ' + lead.contact_name : '') + (lead.phone ? ' · ' + lead.phone : '') : '', location.origin + location.pathname + (t.lead_id ? '#/lead/' + t.lead_id : '#/tasks')].filter(Boolean).join('\n');
+		return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(ft(t).l + ': ' + t.title) +
+			'&dates=' + dates + '&details=' + encodeURIComponent(details);
+	}
+
+	function fuTypeBadge(t, big) {
+		var m = ft(t);
+		return '<span class="fu-ty' + (big ? ' fu-ty--lg' : '') + '" style="--ty:' + m.c + '" title="' + m.l + '">' + icon(m.i, big ? 18 : 14) + '</span>';
+	}
+
+	function fuRow(t, opt) {
+		opt = opt || {};
+		var lead = fuLeadOf(t) || (t.company ? { id: t.lead_id, company: t.company, contact_name: t.contact_name, phone: t.phone, email: t.email, stage: t.stage } : null);
+		var b = t.done_at ? 'done' : fuBucket(t);
+		var mgr = S.boot.user.manager;
+		var sel = !!S.fu.sel[t.id];
+		var phone = lead && lead.phone, mail = lead && lead.email;
+		return '<li class="fu-row is-' + b + (sel ? ' is-sel' : '') + (Number(t.priority) ? ' is-hi' : '') + '" data-fu-id="' + t.id + '">' +
+			(opt.noSelect || t.done_at ? '' : '<label class="fu-pick" title="Select"><input type="checkbox" data-fu-pick="' + t.id + '"' + (sel ? ' checked' : '') + '></label>') +
+			'<button class="fu-done' + (t.done_at ? ' is-on' : '') + '" data-fu-done="' + t.id + '" aria-label="' + (t.done_at ? 'Reopen' : 'Complete') + ': ' + esc(t.title) + '">' + icon('check', 13) + '</button>' +
+			fuTypeBadge(t) +
+			'<div class="fu-main" data-fu-edit="' + t.id + '">' +
+				'<div class="fu-t">' + (Number(t.priority) ? '<span class="fu-flag" title="High priority">' + icon('flag', 12) + '</span>' : '') + esc(t.title) + '</div>' +
+				'<div class="fu-s">' +
+					(lead ? '<a href="#/lead/' + lead.id + '" class="fu-co">' + esc(lead.company) + '</a>' + (lead.contact_name ? '<span>' + esc(lead.contact_name) + '</span>' : '') +
+						(lead.stage ? '<span class="fu-st">' + esc(stageLabel(lead.stage)) + '</span>' : '') : '<span>No deal linked</span>') +
+					(mgr && t.rep_name ? '<span class="fu-own">' + icon('users', 11) + ' ' + esc(t.rep_name) + '</span>' : '') +
+					(t.done_at && t.outcome ? '<span class="fu-out">' + esc(t.outcome) + '</span>' : '') +
+				'</div>' +
+				(t.notes && !opt.compact ? '<div class="fu-n">' + esc(String(t.notes).slice(0, 160)) + '</div>' : '') +
+			'</div>' +
+			'<div class="fu-when is-' + b + '">' + (t.done_at ? 'Done ' + whenLc(t.done_at) : esc(fuDueText(t))) + '</div>' +
+			(t.done_at ? '' : '<div class="fu-acts">' +
+				(phone ? '<a class="fu-ic" href="tel:' + esc(phone) + '" title="Call ' + esc(phone) + '">' + icon('phone', 14) + '</a>' : '') +
+				(mail ? '<a class="fu-ic" href="mailto:' + esc(mail) + '?subject=' + encodeURIComponent(lead.company || '') + '" title="Email ' + esc(mail) + '">' + icon('mail', 14) + '</a>' : '') +
+				'<button class="fu-ic" data-fu-snooze="' + t.id + '" title="Snooze">' + icon('clock', 14) + '</button>' +
+				'<button class="fu-ic" data-fu-log="' + t.id + '" title="Complete and log the outcome">' + icon('pen', 14) + '</button>' +
+			'</div>') +
+			'</li>';
+	}
+
+	function fuFiltered(list) {
+		var q = (S.fu.q || '').toLowerCase();
+		return list.filter(function (t) {
+			if (S.fu.type && (t.type || 'todo') !== S.fu.type) return false;
+			if (S.fu.rep && String(t.rep_id) !== String(S.fu.rep)) return false;
+			if (!q) return true;
+			var l = fuLeadOf(t) || t;
+			return (t.title + ' ' + (t.notes || '') + ' ' + (l.company || '') + ' ' + (l.contact_name || '')).toLowerCase().indexOf(q) > -1;
+		});
+	}
+
+	function fuNoNext() {
+		var has = {};
+		S.flow.tasks.forEach(function (t) { if (t.lead_id) has[t.lead_id] = 1; });
+		return (S.leads || []).filter(function (l) {
+			return ['won', 'lost'].indexOf(l.stage) < 0 && !l.archived_at && !has[l.id] && (!S.fu.rep || String(l.rep_id) === String(S.fu.rep));
+		}).sort(function (a, b) { return Number(b.est_value || 0) - Number(a.est_value || 0); });
+	}
+
+	function viewTasks() {
+		var mgr = S.boot.user.manager;
+		var open = fuFiltered(S.flow.tasks);
+		var groups = { overdue: [], today: [], tomorrow: [], week: [], later: [], none: [] };
+		open.forEach(function (t) { groups[fuBucket(t)].push(t); });
+		var all = S.flow.tasks;
+		var cnt = { overdue: 0, today: 0, soon: 0 };
+		all.forEach(function (t) { var b = fuBucket(t); if (b === 'overdue') cnt.overdue++; else if (b === 'today') cnt.today++; else if (b === 'tomorrow' || b === 'week') cnt.soon++; });
+		var queue = groups.overdue.concat(groups.today);
+		var noNext = fuNoNext();
+		var tab = S.fu.tab;
+
+		var sections;
+		if (tab === 'done') sections = [['Completed', fuFiltered(S.flow.done)]];
+		else if (tab === 'upcoming') sections = [['Tomorrow', groups.tomorrow], ['Later this week', groups.week], ['Later', groups.later]];
+		else if (tab === 'none') sections = [['No date set', groups.none]];
+		else if (tab === 'all') sections = [['Overdue', groups.overdue], ['Today', groups.today], ['Tomorrow', groups.tomorrow], ['Later this week', groups.week], ['Later', groups.later], ['No date', groups.none]];
+		else sections = [['Overdue', groups.overdue], ['Due today', groups.today]];
+
+		var body = sections.filter(function (s) { return s[1].length; }).map(function (s) {
+			return '<div class="fu-sec"><div class="fu-sec__h"><b>' + s[0] + '</b><span>' + s[1].length + '</span></div><ul class="fu-list">' + s[1].map(function (t) { return fuRow(t); }).join('') + '</ul></div>';
+		}).join('');
+		if (!body) {
+			body = tab === 'focus'
+				? '<div class="fu-clear">' + icon('check', 34) + '<h4>You’re all caught up.</h4><p>Nothing overdue or due today' + (groups.tomorrow.length ? ' — ' + groups.tomorrow.length + ' due tomorrow.' : '.') + '</p>' +
+					(noNext.length ? '<button class="axh-btn axh-btn--primary axh-btn--sm" data-fu-tab="nonext">Plan next steps for ' + noNext.length + (noNext.length === 1 ? ' deal' : ' deals') + '</button>' : '') + '</div>'
+				: '<div class="fu-clear"><h4>Nothing here.</h4><p>Try another view or filter.</p></div>';
 		}
 
-		return '<div class="axh-page-head"><div><h1 class="thunder">Follow-ups</h1>' +
-			'<p>' + open.length + ' open</p></div>' +
-			'<button class="axh-btn axh-btn--primary" data-add-task="0">' + icon('plus', 15) + ' Add follow-up</button></div>' +
-			'<div class="axh-grid axh-grid--2"><div class="axh-card"><div class="axh-card__h"><h3>Open</h3></div>' +
-			(open.length ? '<ul class="axh-list">' + open.map(row).join('') + '</ul>' : '<p style="color:var(--gray);font-size:13.5px">Nothing outstanding.</p>') + '</div>' +
-			'<div class="axh-card"><div class="axh-card__h"><h3>Recently done</h3></div>' +
-			(done.length ? '<ul class="axh-list">' + done.map(row).join('') + '</ul>' : '<p style="color:var(--gray);font-size:13.5px">Nothing yet.</p>') + '</div></div>';
+		var tabs = [['focus', 'Focus', cnt.overdue + cnt.today], ['upcoming', 'Upcoming', cnt.soon + all.filter(function (t) { return fuBucket(t) === 'later'; }).length], ['none', 'No date', all.filter(function (t) { return fuBucket(t) === 'none'; }).length], ['all', 'All open', all.length], ['done', 'Completed', null]];
+
+		var html = '<div class="axh-page-head"><div><h1 class="thunder">Follow-ups</h1>' +
+			'<p>' + (cnt.overdue ? '<b class="fu-red">' + cnt.overdue + ' overdue</b> · ' : '') + cnt.today + ' due today · ' + S.flow.doneWeek + ' done this week</p></div>' +
+			'<div class="axh-actions">' +
+			(queue.length ? '<button class="axh-btn axh-btn--ghost" data-fu-queue>' + icon('play', 15) + ' Start queue <span class="fu-pillc">' + queue.length + '</span></button>' : '') +
+			'<button class="axh-btn axh-btn--primary" data-add-task="0">' + icon('plus', 15) + ' Add follow-up</button></div></div>';
+
+		html += '<div class="fu-score">' +
+			fuScore('overdue', 'Overdue', cnt.overdue, 'need attention now', 'focus') +
+			fuScore('today', 'Due today', cnt.today, 'on today’s list', 'focus') +
+			fuScore('soon', 'Next 7 days', cnt.soon, 'coming up', 'upcoming') +
+			fuScore('done', 'Done this week', S.flow.doneWeek, 'completed', 'done') +
+			fuScore('gap', 'No next step', noNext.length, noNext.length === 1 ? 'open deal' : 'open deals', 'nonext') +
+			'</div>';
+
+		html += '<div class="fu-bar"><div class="fu-tabs" role="tablist">' + tabs.map(function (t) {
+			return '<button role="tab" class="' + (tab === t[0] ? 'is-on' : '') + '" data-fu-tab="' + t[0] + '">' + t[1] + (t[2] !== null ? '<span>' + t[2] + '</span>' : '') + '</button>';
+		}).join('') + '</div><div class="fu-filters">' +
+			'<div class="fu-types">' + ['', 'call', 'email', 'text', 'meeting', 'todo'].map(function (k) {
+				return '<button class="' + (S.fu.type === k ? 'is-on' : '') + '" data-fu-type="' + k + '" title="' + (k ? FT[k].l : 'All types') + '">' + (k ? icon(FT[k].i, 13) + '<em>' + FT[k].l + '</em>' : 'All') + '</button>';
+			}).join('') + '</div>' +
+			(mgr && (S.boot.assignees || []).length ? '<select class="axh-select fu-rep" data-fu-rep aria-label="Owner"><option value="">Everyone</option>' + S.boot.assignees.map(function (a) {
+				return '<option value="' + a.id + '"' + (String(S.fu.rep) === String(a.id) ? ' selected' : '') + '>' + esc(a.name) + '</option>'; }).join('') + '</select>' : '') +
+			'<input class="fu-search" type="search" data-fu-q placeholder="Filter follow-ups…" value="' + esc(S.fu.q) + '"></div></div>';
+
+		var side = '<div class="axh-card fu-gap"><div class="axh-card__h"><h3>Deals with no next step</h3><span class="axh-badge axh-badge--' + (noNext.length ? 'amber' : 'green') + '">' + noNext.length + '</span></div>' +
+			'<p class="axh-hint">Every open deal should have a dated next step. These don’t — so nothing will remind you.</p>' +
+			(noNext.length ? '<ul class="fu-gap__l">' + noNext.slice(0, 12).map(function (l) {
+				return '<li><div><a href="#/lead/' + l.id + '">' + esc(l.company) + '</a><span>' + esc(stageLabel(l.stage)) + (Number(l.est_value) ? ' · ' + money(l.est_value) : '') + (mgr && l.rep_name ? ' · ' + esc(l.rep_name) : '') + '</span></div>' +
+					'<button class="axh-btn axh-btn--ghost axh-btn--sm" data-add-task="' + l.id + '">' + icon('plus', 12) + ' Add</button></li>';
+			}).join('') + '</ul>' + (noNext.length > 12 ? '<p class="axh-hint">+ ' + (noNext.length - 12) + ' more</p>' : '') : '<p class="fu-ok">' + icon('check', 14) + ' Every open deal has a next step.</p>') + '</div>';
+
+		if (tab === 'nonext') {
+			body = '<div class="fu-sec"><div class="fu-sec__h"><b>Open deals without a scheduled follow-up</b><span>' + noNext.length + '</span></div>' +
+				(noNext.length ? '<ul class="fu-list">' + noNext.map(function (l) {
+					return '<li class="fu-row"><span class="fu-ty" style="--ty:#B45309">' + icon('flag', 14) + '</span><div class="fu-main"><div class="fu-t"><a href="#/lead/' + l.id + '">' + esc(l.company) + '</a></div>' +
+						'<div class="fu-s"><span>' + esc(l.contact_name || 'No contact') + '</span><span class="fu-st">' + esc(stageLabel(l.stage)) + '</span>' + (Number(l.est_value) ? '<span>' + money(l.est_value) + '</span>' : '') + (mgr && l.rep_name ? '<span class="fu-own">' + esc(l.rep_name) + '</span>' : '') + '</div></div>' +
+						'<div class="fu-acts is-on"><button class="axh-btn axh-btn--primary axh-btn--sm" data-add-task="' + l.id + '">' + icon('plus', 12) + ' Schedule next step</button></div></li>';
+				}).join('') + '</ul>' : '<div class="fu-clear">' + icon('check', 34) + '<h4>Every open deal has a next step.</h4></div>') + '</div>';
+			side = '';
+		}
+
+		html += '<div class="fu-grid' + (side ? '' : ' is-wide') + '"><div class="axh-card fu-card">' + body + '</div>' + side + '</div>';
+		html += fuBulkBar();
+		if (!S.flow.ok) html += '<p class="axh-hint" style="margin-top:12px">Showing the basic list — the follow-up service did not answer.</p>';
+		return html;
+	}
+	function fuScore(k, label, n, sub, tab) {
+		return '<button class="fu-sc fu-sc--' + k + (n ? '' : ' is-zero') + '" data-fu-tab="' + tab + '"><span>' + label + '</span><b>' + n + '</b><em>' + sub + '</em></button>';
+	}
+	function fuBulkBar() {
+		var ids = Object.keys(S.fu.sel).filter(function (k) { return S.fu.sel[k]; });
+		return '<div class="fu-bulk' + (ids.length ? ' is-on' : '') + '" id="fu-bulk"><b>' + ids.length + ' selected</b>' +
+			'<button class="axh-btn axh-btn--primary axh-btn--sm" data-fu-bulk="done">' + icon('check', 13) + ' Complete</button>' +
+			'<button class="axh-btn axh-btn--ghost axh-btn--sm" data-fu-bulk="tomorrow">Move to tomorrow</button>' +
+			'<button class="axh-btn axh-btn--ghost axh-btn--sm" data-fu-bulk="nextweek">Next week</button>' +
+			'<button class="axh-btn axh-btn--danger axh-btn--sm" data-fu-bulk="delete">' + icon('trash', 13) + ' Delete</button>' +
+			'<button class="axh-linkbtn" data-fu-bulk="clear">Clear</button></div>';
+	}
+
+	function fuFind(id) {
+		return S.flow.tasks.concat(S.flow.done).filter(function (t) { return String(t.id) === String(id); })[0] ||
+			((S.lead && S.lead.tasks) || []).filter(function (t) { return String(t.id) === String(id); })[0] || null;
+	}
+	function fuRefresh() {
+		if (/^#\/tasks/.test(location.hash)) return fuLoad(false).then(function () { render(viewTasks()); });
+		if (/^#\/leads/.test(location.hash)) return fuBoard().then(function () { render(viewLeads()); fpReopen(); });
+		return route();
+	}
+
+	/* ---------- add / edit */
+	function fuForm(t, leadId) {
+		t = t || {};
+		var mgr = S.boot.user.manager;
+		var d = fuDue(t), timed = fuTimed(t);
+		var dateV = d && !isNaN(d) ? ymd(d) : ymd(addDays(new Date(), 1));
+		var timeV = timed && d ? pad2(d.getHours()) + ':' + pad2(d.getMinutes()) : '09:00';
+		var lid = String(t.lead_id || leadId || '');
+		var leads = (S.leads || []).filter(function (l) { return !l.archived_at && (['won', 'lost'].indexOf(l.stage) < 0 || String(l.id) === lid); })
+			.sort(function (a, b) { return String(a.company).localeCompare(String(b.company)); });
+		var type = t.type || 'call';
+		return '<div class="fu-form">' +
+			'<div class="fu-types fu-types--form">' + FTK.map(function (k) {
+				return '<button type="button" class="' + (type === k ? 'is-on' : '') + '" data-fuf-type="' + k + '" style="--ty:' + FT[k].c + '">' + icon(FT[k].i, 15) + '<em>' + FT[k].l + '</em></button>';
+			}).join('') + '</div><input type="hidden" data-fuf="type" value="' + type + '">' +
+			'<div class="axh-field"><label>What’s the next step?</label><input type="text" data-fuf="title" value="' + esc(t.title || '') + '" placeholder="' + esc(FT[type].l === 'Call' ? 'Call to walk through the proposal' : 'Send the case study') + '" maxlength="191"></div>' +
+			'<div class="axh-field"><label>Deal</label><select data-fuf="lead_id"><option value="">No deal</option>' + leads.map(function (l) {
+				return '<option value="' + l.id + '"' + (String(l.id) === lid ? ' selected' : '') + '>' + esc(l.company) + (l.contact_name ? ' — ' + esc(l.contact_name) : '') + '</option>';
+			}).join('') + '</select></div>' +
+			'<div class="axh-field"><label>When</label><div class="fu-quick">' +
+				[['Today', 0], ['Tomorrow', 1], ['In 2 days', 2], ['Next week', 7], ['In 2 weeks', 14]].map(function (q) {
+					return '<button type="button" data-fuf-day="' + q[1] + '">' + q[0] + '</button>';
+				}).join('') + '<button type="button" data-fuf-day="mon">Next Monday</button><button type="button" data-fuf-day="none">No date</button></div>' +
+				'<div class="fu-when-in"><input type="date" data-fuf="date" value="' + (t.id && !t.due_at ? '' : dateV) + '">' +
+				'<label class="fu-tog"><input type="checkbox" data-fuf="timed"' + (timed || (!t.id && (type === 'call' || type === 'meeting')) ? ' checked' : '') + '> At a time</label>' +
+				'<input type="time" data-fuf="time" value="' + timeV + '" step="900"></div></div>' +
+			'<div class="fu-form__row"><label class="fu-tog fu-tog--hi"><input type="checkbox" data-fuf="priority"' + (Number(t.priority) ? ' checked' : '') + '> ' + icon('flag', 13) + ' High priority</label>' +
+			(mgr && (S.boot.assignees || []).length ? '<div class="axh-field fu-owner"><label>Owner</label><select data-fuf="rep_id"><option value="">' + (t.id ? 'Keep current' : 'Me') + '</option>' +
+				S.boot.assignees.map(function (a) { return '<option value="' + a.id + '"' + (t.id && String(t.rep_id) === String(a.id) ? ' selected' : '') + '>' + esc(a.name) + '</option>'; }).join('') + '</select></div>' : '') + '</div>' +
+			'<div class="axh-field"><label>Notes</label><textarea data-fuf="notes" rows="3" placeholder="Talking points, what they asked for, links…">' + esc(t.notes || '') + '</textarea></div>' +
+			'</div>';
+	}
+	function fuRead(m) {
+		var g = function (k) { var x = m.querySelector('[data-fuf="' + k + '"]'); return x ? (x.type === 'checkbox' ? x.checked : x.value) : ''; };
+		var out = { title: String(g('title')).trim(), type: g('type') || 'todo', lead_id: g('lead_id') || null, priority: g('priority') ? 1 : 0, notes: g('notes') };
+		var date = g('date'), timed = !!g('timed') && !!date;
+		if (!date) { out.due_at = ''; out.timed = 0; }
+		else if (timed) {
+			var p = date.split('-'), tm = String(g('time') || '09:00').split(':');
+			out.due_at = utcStamp(new Date(+p[0], +p[1] - 1, +p[2], +tm[0], +tm[1]));
+			out.timed = 1;
+		} else { out.due_at = date; out.timed = 0; }
+		if (g('rep_id')) out.rep_id = g('rep_id');
+		return out;
+	}
+	function fuWire(m) {
+		m.querySelector('.axh-modal__box').classList.add('fu-modal');
+		m.addEventListener('click', function (e) {
+			var ty = e.target.closest('[data-fuf-type]');
+			if (ty) {
+				m.querySelectorAll('[data-fuf-type]').forEach(function (b) { b.classList.toggle('is-on', b === ty); });
+				m.querySelector('[data-fuf="type"]').value = ty.getAttribute('data-fuf-type');
+				var tg = m.querySelector('[data-fuf="timed"]');
+				if (tg && !tg.dataset.touched) tg.checked = ['call', 'meeting'].indexOf(ty.getAttribute('data-fuf-type')) > -1;
+				return;
+			}
+			var qd = e.target.closest('[data-fuf-day]');
+			if (qd) {
+				var v = qd.getAttribute('data-fuf-day'), inp = m.querySelector('[data-fuf="date"]');
+				inp.value = v === 'none' ? '' : ymd(v === 'mon' ? nextMonday() : addDays(new Date(), +v));
+				m.querySelectorAll('[data-fuf-day]').forEach(function (b) { b.classList.toggle('is-on', b === qd); });
+			}
+		});
+		var tg = m.querySelector('[data-fuf="timed"]');
+		if (tg) tg.addEventListener('change', function () { tg.dataset.touched = '1'; });
+	}
+	function fuOpenForm(t, leadId, after) {
+		var editing = !!(t && t.id);
+		var m = modal(editing ? 'Edit follow-up' : 'Schedule a follow-up', fuForm(t, leadId),
+			(editing ? '<button class="axh-btn axh-btn--danger" data-fuf-del>' + icon('trash', 14) + '</button>' +
+				(t.due_at ? '<a class="axh-btn axh-btn--quiet" href="' + esc(fuGcal(t)) + '" target="_blank" rel="noopener">' + icon('cal', 14) + ' Add to Google Calendar</a>' : '') : '') +
+			'<span style="flex:1"></span><button class="axh-btn axh-btn--ghost" data-close>Cancel</button>' +
+			'<button class="axh-btn axh-btn--primary" data-fuf-save>' + (editing ? 'Save' : 'Schedule') + '</button>');
+		fuWire(m);
+		var ti = m.querySelector('[data-fuf="title"]'); if (ti) ti.focus();
+		m.querySelector('[data-fuf-save]').onclick = function () {
+			var d = fuRead(m);
+			if (!d.title) { toast('Say what the next step is.', 'bad'); ti.focus(); return; }
+			var p = editing ? api('/flow/tasks/' + t.id, { method: 'POST', body: d }) : api('/flow/tasks', { method: 'POST', body: d });
+			p.then(function () {
+				closeModal();
+				toast(editing ? 'Follow-up saved.' : 'Scheduled' + (d.due_at ? ' for ' + fuDueText(d).toLowerCase() : '') + '.', 'ok');
+				(after || fuRefresh)();
+			}).catch(function (er) { toast(er.message, 'bad'); });
+		};
+		var del = m.querySelector('[data-fuf-del]');
+		if (del) del.onclick = function () {
+			if (!window.confirm('Delete this follow-up?')) return;
+			api('/flow/tasks/bulk', { method: 'POST', body: { ids: [t.id], action: 'delete' } })
+				.then(function () { closeModal(); toast('Deleted.', 'ok'); (after || fuRefresh)(); })
+				.catch(function (er) { toast(er.message, 'bad'); });
+		};
+		m.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.tagName === 'INPUT' && e.target.type === 'text') m.querySelector('[data-fuf-save]').click(); });
+	}
+
+	/* ---------- complete, log outcome, schedule the next one */
+	function fuOutcomeHtml(t) {
+		var m = ft(t), lead = fuLeadOf(t);
+		var nextType = t.type === 'meeting' ? 'email' : (t.type || 'call');
+		return '<div class="fu-form">' +
+			'<div class="fu-ctx">' + fuTypeBadge(t, true) + '<div><b>' + esc(t.title) + '</b><span>' + (lead ? esc(lead.company) + (lead.contact_name ? ' · ' + esc(lead.contact_name) : '') : 'No deal linked') + '</span></div></div>' +
+			'<div class="axh-field"><label>How did it go?</label><div class="fu-quick fu-quick--out">' + m.o.map(function (o, i) {
+				return '<button type="button" data-fuo="' + esc(o) + '"' + (i === 0 && m.o.length === 1 ? ' class="is-on"' : '') + '>' + esc(o) + '</button>';
+			}).join('') + '</div><input type="hidden" data-fuo-v value="' + (m.o.length === 1 ? esc(m.o[0]) : '') + '"></div>' +
+			'<div class="axh-field"><label>Notes for the deal timeline</label><textarea data-fuo-note rows="3" placeholder="What did they say? Anything to remember next time?"></textarea></div>' +
+			(t.lead_id ? '<div class="fu-next"><label class="fu-tog"><input type="checkbox" data-fun-on checked> Schedule the next step</label>' +
+				'<div class="fu-next__b"><div class="fu-types fu-types--mini">' + FTK.map(function (k) {
+					return '<button type="button" class="' + (nextType === k ? 'is-on' : '') + '" data-fun-type="' + k + '" title="' + FT[k].l + '" style="--ty:' + FT[k].c + '">' + icon(FT[k].i, 13) + '</button>';
+				}).join('') + '</div><input type="text" data-fun-title value="' + esc('Follow up: ' + (lead ? lead.company : t.title)) + '">' +
+				'<div class="fu-quick">' + [['Tomorrow', 1], ['2 days', 2], ['3 days', 3], ['Next week', 7], ['2 weeks', 14]].map(function (q, i) {
+					return '<button type="button" data-fun-day="' + q[1] + '"' + (i === 1 ? ' class="is-on"' : '') + '>' + q[0] + '</button>';
+				}).join('') + '</div><input type="hidden" data-fun-type-v value="' + nextType + '"><input type="hidden" data-fun-day-v value="2"></div></div>' : '') +
+			'</div>';
+	}
+	function fuComplete(t, after) {
+		var m = modal('Complete follow-up', fuOutcomeHtml(t),
+			'<button class="axh-btn axh-btn--ghost" data-close>Cancel</button><button class="axh-btn axh-btn--primary" data-fuo-save>' + icon('check', 14) + ' Complete</button>');
+		m.querySelector('.axh-modal__box').classList.add('fu-modal');
+		m.addEventListener('click', function (e) {
+			var o = e.target.closest('[data-fuo]');
+			if (o) { m.querySelectorAll('[data-fuo]').forEach(function (b) { b.classList.toggle('is-on', b === o); }); m.querySelector('[data-fuo-v]').value = o.getAttribute('data-fuo'); return; }
+			var nt = e.target.closest('[data-fun-type]');
+			if (nt) { m.querySelectorAll('[data-fun-type]').forEach(function (b) { b.classList.toggle('is-on', b === nt); }); m.querySelector('[data-fun-type-v]').value = nt.getAttribute('data-fun-type'); return; }
+			var nd = e.target.closest('[data-fun-day]');
+			if (nd) { m.querySelectorAll('[data-fun-day]').forEach(function (b) { b.classList.toggle('is-on', b === nd); }); m.querySelector('[data-fun-day-v]').value = nd.getAttribute('data-fun-day'); }
+		});
+		m.querySelector('[data-fuo-save]').onclick = function () {
+			var outcome = m.querySelector('[data-fuo-v]').value, note = m.querySelector('[data-fuo-note]').value;
+			var on = m.querySelector('[data-fun-on]');
+			var next = on && on.checked ? {
+				title: m.querySelector('[data-fun-title]').value.trim() || 'Follow up',
+				type: m.querySelector('[data-fun-type-v]').value,
+				lead_id: t.lead_id,
+				due_at: ymd(addDays(new Date(), +m.querySelector('[data-fun-day-v]').value)),
+				timed: 0
+			} : null;
+			fuFinish(t, outcome, note, next).then(function () { closeModal(); (after || fuRefresh)(); });
+		};
+	}
+	function fuFinish(t, outcome, note, next) {
+		return api('/flow/tasks/' + t.id, { method: 'POST', body: { done: true, outcome: outcome || '', note: note || '', log: !!(outcome || note) } })
+			.then(function () { return next ? api('/flow/tasks', { method: 'POST', body: next }) : null; })
+			.then(function () { toast(next ? 'Done — next step scheduled for ' + fuDueText(next).toLowerCase() + '.' : 'Done.', 'ok'); })
+			.catch(function (er) { toast(er.message, 'bad'); throw er; });
+	}
+	/* One tap: done now, with an undo and a shortcut to log it properly. */
+	function fuQuickDone(t) {
+		var row = document.querySelector('[data-fu-id="' + t.id + '"]');
+		if (row) row.classList.add('is-leaving');
+		api('/flow/tasks/' + t.id, { method: 'POST', body: { done: true } }).then(function () {
+			fuUndoToast(t);
+			setTimeout(fuRefresh, 260);
+		}).catch(function (er) { if (row) row.classList.remove('is-leaving'); toast(er.message, 'bad'); });
+	}
+	function fuUndoToast(t) {
+		var box = el('axh-toasts');
+		if (!box) return;
+		var n = document.createElement('div');
+		n.className = 'axh-toast axh-toast--ok fu-toast';
+		n.innerHTML = '<span>' + icon('check', 14) + ' Done: ' + esc(t.title) + '</span>' +
+			(t.lead_id ? '<button data-fut="next">Schedule next</button>' : '') + '<button data-fut="undo">Undo</button>';
+		box.appendChild(n);
+		var kill = setTimeout(function () { n.remove(); }, 7000);
+		n.addEventListener('click', function (e) {
+			var b = e.target.closest('[data-fut]');
+			if (!b) return;
+			clearTimeout(kill); n.remove();
+			if (b.getAttribute('data-fut') === 'undo') {
+				api('/flow/tasks/' + t.id, { method: 'POST', body: { done: false } }).then(function () { toast('Restored.', 'ok'); fuRefresh(); });
+			} else {
+				fuOpenForm({ type: t.type, lead_id: t.lead_id, title: 'Follow up: ' + ((fuLeadOf(t) || {}).company || t.title) });
+			}
+		});
+	}
+
+	/* ---------- snooze */
+	function fuSnoozeMenu(btn, ids) {
+		var old = document.querySelector('.fu-menu');
+		if (old) old.remove();
+		var now = new Date();
+		var at9 = function (d) { return utcStamp(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9, 0)); };
+		var opts = [
+			['In 1 hour', utcStamp(new Date(now.getTime() + 3600000)), 1],
+			['In 3 hours', utcStamp(new Date(now.getTime() + 3 * 3600000)), 1],
+			['Tomorrow, 9 AM', at9(addDays(now, 1)), 1],
+			['In 2 days', ymd(addDays(now, 2)), 0],
+			['Next Monday, 9 AM', at9(nextMonday()), 1],
+			['Next week', ymd(addDays(now, 7)), 0]
+		];
+		var menu = document.createElement('div');
+		menu.className = 'fu-menu';
+		menu.innerHTML = '<b>Snooze until…</b>' + opts.map(function (o, i) { return '<button data-fus="' + i + '">' + o[0] + '</button>'; }).join('') + '<button data-fus="pick">Pick a date…</button>';
+		document.body.appendChild(menu);
+		var r = btn.getBoundingClientRect();
+		menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, r.bottom + 6) + 'px';
+		menu.style.left = Math.max(8, Math.min(window.innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth)) + 'px';
+		function close(e) { if (!e || !menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', close, true); } }
+		setTimeout(function () { document.addEventListener('mousedown', close, true); }, 0);
+		menu.addEventListener('click', function (e) {
+			var b = e.target.closest('[data-fus]');
+			if (!b) return;
+			close();
+			var k = b.getAttribute('data-fus');
+			if (k === 'pick') { var t = fuFind(ids[0]); if (t) fuOpenForm(t); return; }
+			var o = opts[+k];
+			api('/flow/tasks/bulk', { method: 'POST', body: { ids: ids, action: 'snooze', due_at: o[1], timed: o[2] } })
+				.then(function () { toast('Snoozed until ' + o[0].toLowerCase() + '.', 'ok'); S.fu.sel = {}; fuRefresh(); })
+				.catch(function (er) { toast(er.message, 'bad'); });
+		});
+	}
+
+	/* ---------- the queue: work through today's list one at a time */
+	function fuQueue() {
+		var list = S.flow.tasks.filter(function (t) { var b = fuBucket(t); return b === 'overdue' || b === 'today'; });
+		list = fuFiltered(list).sort(function (a, b) { return (Number(b.priority) - Number(a.priority)) || (fuDue(a) - fuDue(b)); });
+		if (!list.length) { toast('Nothing overdue or due today.', 'ok'); return; }
+		var Q = { list: list, i: 0, done: 0 };
+		var ov = document.createElement('div');
+		ov.className = 'fu-q-ov';
+		ov.setAttribute('role', 'dialog');
+		document.body.appendChild(ov);
+		document.body.classList.add('fu-q-open');
+
+		function close() {
+			ov.remove(); document.body.classList.remove('fu-q-open'); document.removeEventListener('keydown', keys);
+			toast(Q.done ? 'Queue closed — ' + Q.done + ' completed.' : 'Queue closed.', 'ok');
+			fuRefresh();
+		}
+		function keys(e) {
+			if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) { if (e.key === 'Escape') e.target.blur(); return; }
+			if (e.key === 'Escape') close();
+			else if (e.key === 'Enter') { var b = ov.querySelector('[data-qa="done"]'); if (b) b.click(); }
+			else if (e.key === 's' || e.key === 'S') { var k = ov.querySelector('[data-qa="skip"]'); if (k) k.click(); }
+		}
+		document.addEventListener('keydown', keys);
+
+		function paintQ() {
+			if (Q.i >= Q.list.length) {
+				ov.innerHTML = '<div class="fu-q"><div class="fu-q__end">' + icon('check', 44) + '<h2 class="thunder">Queue cleared.</h2><p>' + Q.done + ' completed · ' + (Q.list.length - Q.done) + ' skipped or snoozed.</p>' +
+					'<button class="axh-btn axh-btn--primary" data-qa="close">Back to follow-ups</button></div></div>';
+				return;
+			}
+			var t = Q.list[Q.i], m = ft(t), lead = fuLeadOf(t) || (t.company ? { id: t.lead_id, company: t.company, contact_name: t.contact_name, phone: t.phone, email: t.email, stage: t.stage } : null);
+			var pct = Math.round(Q.i / Q.list.length * 100);
+			var nextType = t.type === 'meeting' ? 'email' : (t.type || 'call');
+			ov.innerHTML = '<div class="fu-q">' +
+				'<div class="fu-q__top"><div><b>Follow-up queue</b><span>' + (Q.i + 1) + ' of ' + Q.list.length + ' · ' + Q.done + ' done</span></div>' +
+				'<div class="fu-q__bar"><i style="width:' + pct + '%"></i></div><button class="axh-x" data-qa="close" aria-label="Close queue">' + icon('x', 18) + '</button></div>' +
+				'<div class="fu-q__body"><div class="fu-q__task">' +
+					'<div class="fu-q__ty" style="--ty:' + m.c + '">' + icon(m.i, 16) + ' ' + m.l + (Number(t.priority) ? ' <span class="fu-flag">' + icon('flag', 12) + ' High priority</span>' : '') + '</div>' +
+					'<h2 class="fu-q__t">' + esc(t.title) + '</h2>' +
+					'<p class="fu-q__due is-' + fuBucket(t) + '">' + icon('clock', 13) + ' ' + esc(fuDueText(t)) + '</p>' +
+					(t.notes ? '<div class="fu-q__notes">' + esc(t.notes) + '</div>' : '') +
+					'<div class="axh-field"><label>Outcome</label><div class="fu-quick fu-quick--out">' + m.o.map(function (o) { return '<button type="button" data-qo="' + esc(o) + '">' + esc(o) + '</button>'; }).join('') + '</div></div>' +
+					'<div class="axh-field"><label>Notes</label><textarea data-qn rows="3" placeholder="Logged to the deal’s timeline"></textarea></div>' +
+					(t.lead_id ? '<div class="fu-next"><label class="fu-tog"><input type="checkbox" data-qx checked> Then schedule</label>' +
+						'<div class="fu-types fu-types--mini">' + FTK.map(function (k) { return '<button type="button" class="' + (nextType === k ? 'is-on' : '') + '" data-qt="' + k + '" title="' + FT[k].l + '" style="--ty:' + FT[k].c + '">' + icon(FT[k].i, 13) + '</button>'; }).join('') + '</div>' +
+						'<div class="fu-quick">' + [['Tomorrow', 1], ['2 days', 2], ['3 days', 3], ['Next week', 7]].map(function (q, i) { return '<button type="button" data-qd="' + q[1] + '"' + (i === 1 ? ' class="is-on"' : '') + '>' + q[0] + '</button>'; }).join('') + '</div></div>' : '') +
+				'</div>' +
+				'<div class="fu-q__deal">' + (lead ? '<div class="fu-q__co"><span class="fu-q__av">' + esc(initials(lead.company)) + '</span><div><h3>' + esc(lead.company) + '</h3><span>' + esc(lead.contact_name || 'No contact name') + (lead.stage ? ' · ' + esc(stageLabel(lead.stage)) : '') + '</span></div></div>' +
+					'<div class="fu-q__cta">' + (lead.phone ? '<a class="axh-btn axh-btn--primary" href="tel:' + esc(lead.phone) + '">' + icon('phone', 15) + ' ' + esc(lead.phone) + '</a>' : '') +
+					(lead.email ? '<a class="axh-btn axh-btn--ghost" href="mailto:' + esc(lead.email) + '">' + icon('mail', 15) + ' Email</a>' : '') +
+					'<a class="axh-btn axh-btn--quiet" href="#/lead/' + lead.id + '" target="_blank" rel="noopener">' + icon('eye', 15) + ' Open deal</a></div>' +
+					'<div class="fu-q__tl" data-qtl><p class="axh-hint">Loading recent activity…</p></div>' : '<div class="fu-q__co"><div><h3>No deal linked</h3><span>A general follow-up.</span></div></div>') + '</div></div>' +
+				'<div class="fu-q__foot"><button class="axh-btn axh-btn--quiet" data-qa="skip">Skip <kbd>S</kbd></button>' +
+				'<button class="axh-btn axh-btn--ghost" data-qa="snooze">' + icon('clock', 14) + ' Tomorrow 9 AM</button>' +
+				'<button class="axh-btn axh-btn--primary" data-qa="done">' + icon('check', 15) + ' Complete &amp; next <kbd>Enter</kbd></button></div></div>';
+			if (lead && lead.id) {
+				api('/leads/' + lead.id).then(function (d) {
+					var box = ov.querySelector('[data-qtl]');
+					if (!box || Q.list[Q.i] !== t) return;
+					var acts = (d.activity || []).slice(0, 5);
+					box.innerHTML = '<h4>Recent activity</h4>' + (acts.length ? '<ul>' + acts.map(function (a) {
+						return '<li><b>' + esc(a.subject || a.type) + '</b><span>' + when(a.occurred_at) + '</span></li>';
+					}).join('') + '</ul>' : '<p class="axh-hint">Nothing logged yet.</p>') +
+						((d.lead && d.lead.notes) ? '<h4>Notes</h4><p class="fu-q__ln">' + esc(String(d.lead.notes).slice(0, 400)) + '</p>' : '');
+				}).catch(function () { var box = ov.querySelector('[data-qtl]'); if (box) box.innerHTML = ''; });
+			}
+		}
+		ov.addEventListener('click', function (e) {
+			var b = e.target.closest('[data-qo],[data-qt],[data-qd],[data-qa]');
+			if (!b) return;
+			var pick = function (attr) { ov.querySelectorAll('[' + attr + ']').forEach(function (x) { x.classList.toggle('is-on', x === b); }); };
+			if (b.hasAttribute('data-qo')) return pick('data-qo');
+			if (b.hasAttribute('data-qt')) return pick('data-qt');
+			if (b.hasAttribute('data-qd')) return pick('data-qd');
+			var a = b.getAttribute('data-qa'), t = Q.list[Q.i];
+			if (a === 'close') return close();
+			if (a === 'skip') { Q.i++; return paintQ(); }
+			b.disabled = true;
+			if (a === 'snooze') {
+				var d = addDays(new Date(), 1);
+				api('/flow/tasks/bulk', { method: 'POST', body: { ids: [t.id], action: 'snooze', due_at: utcStamp(new Date(d.getFullYear(), d.getMonth(), d.getDate(), 9, 0)), timed: 1 } })
+					.then(function () { Q.i++; paintQ(); }).catch(function (er) { b.disabled = false; toast(er.message, 'bad'); });
+				return;
+			}
+			if (a === 'done') {
+				var o = ov.querySelector('[data-qo].is-on'), x = ov.querySelector('[data-qx]');
+				var nt = ov.querySelector('[data-qt].is-on'), nd = ov.querySelector('[data-qd].is-on');
+				var lead = fuLeadOf(t);
+				var next = x && x.checked ? { title: 'Follow up: ' + (lead ? lead.company : t.company || t.title), type: nt ? nt.getAttribute('data-qt') : 'call', lead_id: t.lead_id, due_at: ymd(addDays(new Date(), nd ? +nd.getAttribute('data-qd') : 2)), timed: 0 } : null;
+				fuFinish(t, o ? o.getAttribute('data-qo') : '', (ov.querySelector('[data-qn]') || {}).value || '', next)
+					.then(function () { Q.done++; Q.i++; paintQ(); }, function () { b.disabled = false; });
+			}
+		});
+		paintQ();
+	}
+
+	/* ---------- events (capture phase, ahead of the older handlers) */
+	document.addEventListener('click', function (e) {
+		var t = e.target, hit = function (s) { return t.closest ? t.closest(s) : null; };
+		var b;
+		if ((b = hit('[data-add-task]'))) {
+			e.preventDefault(); e.stopPropagation();
+			var lid = b.getAttribute('data-add-task');
+			var lead = (S.leads || []).filter(function (l) { return String(l.id) === String(lid); })[0] || (S.lead && S.lead.lead && String(S.lead.lead.id) === String(lid) ? S.lead.lead : null);
+			fuOpenForm(lid && lid !== '0' ? { type: 'call', lead_id: lid, title: lead ? 'Call ' + (lead.contact_name || lead.company) : '' } : null, lid !== '0' ? lid : null);
+			return;
+		}
+		if ((b = hit('[data-fu-tab]'))) { e.stopPropagation(); S.fu.tab = b.getAttribute('data-fu-tab'); if (!/^#\/tasks/.test(location.hash)) { location.hash = '#/tasks'; return; } render(viewTasks()); return; }
+		if ((b = hit('[data-fu-type]'))) { e.stopPropagation(); S.fu.type = b.getAttribute('data-fu-type'); render(viewTasks()); return; }
+		if ((b = hit('[data-fu-queue]'))) { e.stopPropagation(); fuQueue(); return; }
+		if ((b = hit('[data-fu-done]'))) {
+			e.preventDefault(); e.stopPropagation();
+			var tk = fuFind(b.getAttribute('data-fu-done'));
+			if (!tk) return;
+			if (tk.done_at) api('/flow/tasks/' + tk.id, { method: 'POST', body: { done: false } }).then(function () { toast('Reopened.', 'ok'); fuRefresh(); });
+			else fuQuickDone(tk);
+			return;
+		}
+		if ((b = hit('[data-fu-log]'))) { e.stopPropagation(); var tl = fuFind(b.getAttribute('data-fu-log')); if (tl) fuComplete(tl); return; }
+		if ((b = hit('[data-fu-snooze]'))) { e.stopPropagation(); fuSnoozeMenu(b, [b.getAttribute('data-fu-snooze')]); return; }
+		if (hit('[data-fu-pick]') || hit('.fu-pick')) { e.stopPropagation(); return; }
+		if ((b = hit('[data-fu-edit]')) && !hit('a[href]')) { e.stopPropagation(); var te = fuFind(b.getAttribute('data-fu-edit')); if (te && !te.done_at) fuOpenForm(te); return; }
+		if ((b = hit('[data-fu-bulk]'))) {
+			e.stopPropagation();
+			var act = b.getAttribute('data-fu-bulk');
+			var ids = Object.keys(S.fu.sel).filter(function (k) { return S.fu.sel[k]; });
+			if (act === 'clear' || !ids.length) { S.fu.sel = {}; render(viewTasks()); return; }
+			if (act === 'delete' && !window.confirm('Delete ' + ids.length + ' follow-up' + (ids.length === 1 ? '' : 's') + '?')) return;
+			var body = { ids: ids, action: act === 'done' || act === 'delete' ? act : 'snooze' };
+			if (act === 'tomorrow') { body.due_at = ymd(addDays(new Date(), 1)); body.timed = 0; }
+			if (act === 'nextweek') { body.due_at = ymd(nextMonday()); body.timed = 0; }
+			api('/flow/tasks/bulk', { method: 'POST', body: body }).then(function (r) {
+				toast((r.count || ids.length) + ' updated.', 'ok'); S.fu.sel = {}; fuRefresh();
+			}).catch(function (er) { toast(er.message, 'bad'); });
+			return;
+		}
+	}, true);
+	document.addEventListener('change', function (e) {
+		var t = e.target;
+		if (t.hasAttribute && t.hasAttribute('data-fu-pick')) {
+			S.fu.sel[t.getAttribute('data-fu-pick')] = t.checked;
+			var row = t.closest('.fu-row'); if (row) row.classList.toggle('is-sel', t.checked);
+			var bar = el('fu-bulk'); if (bar) bar.outerHTML = fuBulkBar();
+		}
+		if (t.hasAttribute && t.hasAttribute('data-fu-rep')) { S.fu.rep = t.value; render(viewTasks()); }
+	});
+	var fuQT;
+	document.addEventListener('input', function (e) {
+		var t = e.target;
+		if (!(t.hasAttribute && t.hasAttribute('data-fu-q'))) return;
+		clearTimeout(fuQT);
+		fuQT = setTimeout(function () {
+			S.fu.q = t.value; var pos = t.selectionStart;
+			render(viewTasks());
+			var n = document.querySelector('[data-fu-q]'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) {} }
+		}, 220);
+	});
+
+	/* Follow-ups on a deal's own page, with types and times. */
+	function fuLeadList(tasks, leadId, stage) {
+		var open = (tasks || []).filter(function (t) { return !t.done_at; });
+		var closed = stage === 'won' || stage === 'lost';
+		var done = (tasks || []).filter(function (t) { return t.done_at; }).slice(0, 4);
+		return (open.length ? '<ul class="fu-list fu-list--lead">' + open.map(function (t) { return fuRow(t, { noSelect: true, compact: true }); }).join('') + '</ul>'
+			: (closed ? '<p class="axh-hint">' + (stage === 'won' ? 'Closed won — schedule check-ins or onboarding calls here.' : 'Closed lost — nothing scheduled.') + '</p>'
+				: '<div class="fu-none">' + icon('flag', 14) + ' No next step scheduled. <button class="axh-linkbtn" data-add-task="' + leadId + '">Schedule one</button></div>')) +
+			(done.length ? '<details class="fu-donebox"><summary>' + done.length + ' completed</summary><ul class="fu-list fu-list--lead">' + done.map(function (t) { return fuRow(t, { noSelect: true, compact: true }); }).join('') + '</ul></details>' : '');
+	}
+
+	/* ===================================================== pipeline (1.8) */
+
+	S.pl = S.pl || { sort: 'activity', attention: false };
+	function fpProb(stage) { var p = (S.flow.board && S.flow.board.probability) || {}; return p[stage] !== undefined ? Number(p[stage]) : ({ new: 10, contacted: 20, discovery: 35, scoping: 50, proposal: 70, won: 100, lost: 0 }[stage] || 0); }
+	function fpMeta(l) { var m = S.flow.board && S.flow.board.meta; return (m && m[l.id]) || null; }
+	function fpRot() { return (S.flow.board && S.flow.board.rot_days) || 14; }
+	function fpDays(d) { var x = d ? srvDate(d) : null; return x && !isNaN(x) ? Math.max(0, Math.floor((Date.now() - x.getTime()) / 86400000)) : null; }
+	function fpFlags(l) {
+		var m = fpMeta(l), closed = ['won', 'lost'].indexOf(l.stage) > -1;
+		var inStage = m ? fpDays(m.stage_at) : null, idle = m ? fpDays(m.last_at) : null;
+		var next = m && m.next, nb = next ? fuBucket(next) : null;
+		return {
+			meta: m, closed: closed, inStage: inStage, idle: idle, next: next,
+			overdue: !closed && nb === 'overdue',
+			nonext: !closed && !!m && !next,
+			rot: !closed && idle !== null && idle >= fpRot()
+		};
+	}
+	function fpNeeds(f) { return f.overdue || f.nonext || f.rot; }
+
+	function fpSort(list) {
+		var k = S.pl.sort;
+		return list.slice().sort(function (a, b) {
+			var fa = fpFlags(a), fb = fpFlags(b);
+			if (k === 'value') return Number(b.est_value || 0) - Number(a.est_value || 0);
+			if (k === 'stage') return (fb.inStage || 0) - (fa.inStage || 0);
+			if (k === 'next') {
+				var da = fa.next && fa.next.due_at ? fuDue(fa.next).getTime() : Infinity, db = fb.next && fb.next.due_at ? fuDue(fb.next).getTime() : Infinity;
+				return da - db;
+			}
+			return (fa.idle === null ? 1e9 : fa.idle) - (fb.idle === null ? 1e9 : fb.idle);
+		});
+	}
+
+	function fpStrip(leads) {
+		var open = leads.filter(function (l) { return ['won', 'lost'].indexOf(l.stage) < 0; });
+		var total = 0, weighted = 0, need = 0, nonext = 0;
+		open.forEach(function (l) {
+			var v = Number(l.est_value || 0); total += v; weighted += v * fpProb(l.stage) / 100;
+			var f = fpFlags(l); if (fpNeeds(f)) need++; if (f.nonext) nonext++;
+		});
+		var m0 = new Date(); m0 = new Date(m0.getFullYear(), m0.getMonth(), 1);
+		var won = leads.filter(function (l) { return l.stage === 'won' && l.closed_at && srvDate(l.closed_at) >= m0; });
+		var wonV = won.reduce(function (a, l) { return a + Number(l.contract_value || l.est_value || 0); }, 0);
+		var closed = leads.filter(function (l) { return l.stage === 'won' || l.stage === 'lost'; });
+		var rate = closed.length ? Math.round(leads.filter(function (l) { return l.stage === 'won'; }).length / closed.length * 100) : null;
+		return '<div class="fp-strip">' +
+			'<div class="fp-s"><span>Open pipeline</span><b>' + money(total) + '</b><em>' + open.length + ' open ' + (open.length === 1 ? 'deal' : 'deals') + '</em></div>' +
+			'<div class="fp-s fp-s--acc"><span>Weighted forecast</span><b>' + money(weighted) + '</b><em>value × stage likelihood</em></div>' +
+			'<button class="fp-s fp-s--warn' + (S.pl.attention ? ' is-on' : '') + (need ? '' : ' is-zero') + '" data-fp-attn><span>Needs attention</span><b>' + need + '</b><em>' + (need ? (nonext ? nonext + ' with no next step' : 'overdue or going cold') : 'every deal is moving') + '</em></button>' +
+			'<div class="fp-s fp-s--ok"><span>Won this month</span><b>' + money(wonV) + '</b><em>' + won.length + (won.length === 1 ? ' deal' : ' deals') + (rate !== null ? ' · ' + rate + '% win rate' : '') + '</em></div>' +
+			'</div>';
+	}
+
+	function fpCard(l, mgr) {
+		var f = fpFlags(l), next = f.next;
+		var nb = next ? fuBucket(next) : null;
+		var cls = 'axh-kc fp-card' + (f.rot ? ' is-rot' : '') + (f.overdue ? ' is-due' : '') + (f.closed ? ' is-closed' : '');
+		var stageChip = f.inStage !== null && !f.closed
+			? '<span class="fp-age' + (f.inStage >= fpRot() * 2 ? ' is-bad' : f.inStage >= fpRot() ? ' is-warn' : '') + '" title="Days in this stage">' + icon('clock', 11) + ' ' + (f.inStage === 0 ? 'New in stage' : f.inStage + 'd in stage') + '</span>' : '';
+		return '<div class="' + cls + '" draggable="true" data-id="' + l.id + '" data-fp-open="' + l.id + '" tabindex="0" role="button" aria-label="Preview ' + esc(l.company) + '">' +
+			'<div class="fp-top"><div class="axh-kc__t">' + esc(l.company) + '</div><span class="axh-kc__v">' + (Number(l.est_value) ? money(l.est_value) : '') + '</span></div>' +
+			'<div class="axh-kc__s">' + esc(l.contact_name || 'No contact yet') + (l.city ? ' · ' + esc(l.city) : '') + '</div>' +
+			(mgr && l.rep_name ? '<div class="axh-kc__s fp-own"><span class="fp-av">' + esc(initials(l.rep_name)) + '</span>' + esc(l.rep_name) + '</div>' : '') +
+			(f.closed ? '' : next
+				? '<div class="fp-next is-' + nb + '">' + fuTypeBadge(next) + '<div><span>' + esc(next.title) + '</span><em>' + esc(fuDueText(next)) + '</em></div></div>'
+				: (f.meta ? '<button class="fp-next fp-next--none" data-add-task="' + l.id + '">' + icon('flag', 12) + '<span>No next step</span><em>+ Schedule</em></button>' : '')) +
+			'<div class="fp-foot">' + stageChip +
+				(f.rot ? '<span class="fp-cold" title="No activity for ' + f.idle + ' days">Going cold · ' + f.idle + 'd</span>' : (f.idle !== null && !f.closed ? '<span class="fp-idle">Active ' + (f.idle === 0 ? 'today' : f.idle + 'd ago') + '</span>' : '')) +
+				(l.reg_status === 'draft' ? '<button class="axh-kc__reg" data-register="' + l.id + '">' + icon('flag', 11) + ' Register</button>' : '') +
+			'</div>' +
+			'<div class="fp-quick">' +
+				(l.phone ? '<a href="tel:' + esc(l.phone) + '" title="Call ' + esc(l.phone) + '">' + icon('phone', 13) + '</a>' : '') +
+				(l.email ? '<a href="mailto:' + esc(l.email) + '" title="Email ' + esc(l.email) + '">' + icon('mail', 13) + '</a>' : '') +
+				'<button data-add-task="' + l.id + '" title="Schedule a follow-up">' + icon('cal', 13) + '</button>' +
+				'<a href="#/lead/' + l.id + '" title="Open the full record">' + icon('right', 13) + '</a>' +
+			'</div></div>';
+	}
+
+	function fpBoardHtml(leads, mgr) {
+		var list = S.pl.attention ? leads.filter(function (l) { return fpNeeds(fpFlags(l)); }) : leads;
+		return '<div class="axh-board fp-board">' + S.boot.stages.map(function (st) {
+			var inCol = fpSort(list.filter(function (l) { return l.stage === st.key; }));
+			var val = inCol.reduce(function (a, l) { return a + Number(l.est_value || 0); }, 0);
+			var closed = st.key === 'won' || st.key === 'lost';
+			var prob = fpProb(st.key);
+			return '<div class="axh-col fp-col' + (closed ? ' fp-col--closed fp-col--' + st.key : '') + '" data-stage="' + st.key + '">' +
+				'<div class="fp-colh"><div class="fp-colh__t"><b>' + st.label + '</b><span class="fp-n">' + inCol.length + '</span>' +
+					(closed ? '' : '<button class="fp-add" data-fp-add="' + st.key + '" title="Add a deal to ' + esc(st.label) + '">' + icon('plus', 13) + '</button>') + '</div>' +
+				'<div class="fp-colh__v"><b>' + (val ? money(val) : '$0') + '</b>' + (closed ? '' : '<span title="Likelihood to close at this stage">' + prob + '% · ' + money(val * prob / 100) + ' weighted</span>') + '</div>' +
+				'<div class="fp-prob"><i style="width:' + prob + '%"></i></div></div>' +
+				'<div class="fp-cards">' + (inCol.length ? inCol.map(function (l) { return fpCard(l, mgr); }).join('') : '<div class="fp-empty">' + (closed ? 'Drop deals here' : 'No deals') + '</div>') + '</div></div>';
+		}).join('') + '</div>';
+	}
+
+	/* ---------- quick look at a deal without leaving the board */
+	function fpDrawer(id) {
+		var l = (S.leads || []).filter(function (x) { return String(x.id) === String(id); })[0];
+		if (!l) return;
+		S.pl.open = id;
+		var dr = el('fp-drawer');
+		if (!dr) {
+			dr = document.createElement('div');
+			dr.id = 'fp-drawer';
+			dr.innerHTML = '<div class="fp-dr__bg" data-fp-close></div><aside class="fp-dr" role="dialog" aria-label="Deal preview"></aside>';
+			document.body.appendChild(dr);
+		}
+		var box = dr.querySelector('.fp-dr');
+		box.innerHTML = fpDrawerHtml(l, null);
+		dr.classList.add('is-on');
+		api('/leads/' + id).then(function (d) {
+			if (String(S.pl.open) !== String(id)) return;
+			S.lead = d;
+			box.innerHTML = fpDrawerHtml(d.lead || l, d);
+		}).catch(function () {});
+	}
+	function fpClose() { var dr = el('fp-drawer'); if (dr) dr.classList.remove('is-on'); S.pl.open = null; }
+	function fpReopen() { if (S.pl.open && el('fp-drawer') && el('fp-drawer').classList.contains('is-on')) fpDrawer(S.pl.open); }
+	function fpDrawerHtml(l, d) {
+		var f = fpFlags(l), mgr = S.boot.user.manager;
+		var stages = S.boot.stages.filter(function (s) { return s.key !== 'won' || mgr; });
+		return '<div class="fp-dr__h"><div><span class="fp-dr__k">' + esc(stageLabel(l.stage)) + (f.inStage !== null ? ' · ' + f.inStage + 'd in stage' : '') + '</span>' +
+			'<h2 class="thunder">' + esc(l.company) + '</h2>' +
+			'<p>' + esc(l.contact_name || 'No contact') + (l.title ? ', ' + esc(l.title) : '') + (l.city ? ' · ' + esc(l.city) : '') + '</p></div>' +
+			'<button class="axh-x" data-fp-close aria-label="Close">' + icon('x', 18) + '</button></div>' +
+			'<div class="fp-dr__cta">' + (l.phone ? '<a class="axh-btn axh-btn--primary axh-btn--sm" href="tel:' + esc(l.phone) + '">' + icon('phone', 14) + ' Call</a>' : '') +
+				(l.email ? '<a class="axh-btn axh-btn--ghost axh-btn--sm" href="mailto:' + esc(l.email) + '">' + icon('mail', 14) + ' Email</a>' : '') +
+				'<button class="axh-btn axh-btn--ghost axh-btn--sm" data-add-task="' + l.id + '">' + icon('cal', 14) + ' Follow-up</button>' +
+				'<button class="axh-btn axh-btn--ghost axh-btn--sm" data-fp-log="' + l.id + '">' + icon('pen', 14) + ' Log</button>' +
+				'<a class="axh-btn axh-btn--quiet axh-btn--sm" href="#/lead/' + l.id + '">Full record ' + icon('right', 13) + '</a></div>' +
+			'<div class="fp-dr__kv"><div><span>Value</span><b>' + (Number(l.est_value) ? money(l.est_value) : '—') + '</b></div>' +
+				'<div><span>Weighted</span><b>' + money(Number(l.est_value || 0) * fpProb(l.stage) / 100) + '</b></div>' +
+				'<div><span>Last activity</span><b>' + (f.idle === null ? '—' : f.idle === 0 ? 'Today' : f.idle + 'd ago') + '</b></div>' +
+				(mgr ? '<div><span>Owner</span><b>' + esc(l.rep_name || '—') + '</b></div>' : '<div><span>Source</span><b>' + esc(srcBase(l.source)) + '</b></div>') + '</div>' +
+			(f.rot ? '<div class="fp-dr__warn">' + icon('clock', 14) + ' No activity for ' + f.idle + ' days — this deal is going cold.</div>' : '') +
+			'<div class="fp-dr__sec"><h4>Move to</h4><div class="fp-stages">' + stages.map(function (s) {
+				return '<button class="' + (s.key === l.stage ? 'is-on' : '') + '" data-fp-stage="' + s.key + '" data-lead="' + l.id + '">' + esc(s.label) + '</button>';
+			}).join('') + '</div></div>' +
+			'<div class="fp-dr__sec"><h4>Next steps <button class="axh-linkbtn" data-add-task="' + l.id + '">+ Add</button></h4>' +
+				(d ? fuLeadList(d.tasks, l.id, l.stage) : '<p class="axh-hint">Loading…</p>') + '</div>' +
+			'<div class="fp-dr__sec"><h4>Activity</h4>' + (d ? ((d.activity || []).length ? '<ul class="fp-tl">' + d.activity.slice(0, 8).map(function (a) {
+				return '<li><b>' + esc(a.subject || a.type) + '</b><span>' + when(a.occurred_at) + '</span>' + (a.body ? '<p>' + esc(String(a.body).slice(0, 220)) + '</p>' : '') + '</li>';
+			}).join('') + '</ul>' : '<p class="axh-hint">Nothing logged yet.</p>') : '<p class="axh-hint">Loading…</p>') + '</div>' +
+			(l.notes ? '<div class="fp-dr__sec"><h4>Notes</h4><p class="fp-notes">' + esc(String(l.notes).slice(0, 800)) + '</p></div>' : '');
+	}
+
+	/* ---------- lost needs a reason; won goes through the existing approval */
+	var LOST = ['Price', 'Went with someone else', 'No budget', 'Bad timing', 'Stopped responding', 'Doing it themselves', 'Not a fit'];
+	function fpLost(id, done) {
+		var m = modal('Why was it lost?', '<div class="fu-form"><div class="fu-quick fu-quick--out">' + LOST.map(function (r) { return '<button type="button" data-lr="' + esc(r) + '">' + esc(r) + '</button>'; }).join('') + '</div>' +
+			'<div class="axh-field" style="margin-top:12px"><label>Details (optional)</label><textarea data-lr-note rows="3" placeholder="What would have won it?"></textarea></div>' +
+			'<p class="axh-hint">Lost reasons show on the deal’s timeline and help spot patterns.</p></div>',
+			'<button class="axh-btn axh-btn--ghost" data-close>Cancel</button><button class="axh-btn axh-btn--danger" data-lr-save>Mark as lost</button>');
+		m.querySelector('.axh-modal__box').classList.add('fu-modal');
+		var reason = '';
+		m.addEventListener('click', function (e) { var b = e.target.closest('[data-lr]'); if (!b) return; reason = b.getAttribute('data-lr'); m.querySelectorAll('[data-lr]').forEach(function (x) { x.classList.toggle('is-on', x === b); }); });
+		m.querySelector('[data-lr-save]').onclick = function () {
+			if (!reason) { toast('Pick a reason.', 'bad'); return; }
+			var note = m.querySelector('[data-lr-note]').value;
+			api('/leads/' + id, { method: 'POST', body: { stage: 'lost' } })
+				.then(function () { return api('/flow/log', { method: 'POST', body: { lead_id: id, type: 'lost', subject: 'Lost: ' + reason, body: note } }).catch(function () {}); })
+				.then(function () { closeModal(); toast('Marked lost — ' + reason.toLowerCase() + '.', 'ok'); (done || fpRefresh)(); })
+				.catch(function (er) { toast(er.message, 'bad'); });
+		};
+	}
+	function fpRefresh() {
+		return Promise.all([refresh(true), fuBoard()]).then(function () {
+			if (/^#\/leads/.test(location.hash)) { render(viewLeads()); fpReopen(); } else route();
+		});
+	}
+	function fpMove(id, stage) {
+		if (stage === 'lost') return fpLost(id);
+		if (stage === 'won') return; // handled by the existing Closed Won flow
+		api('/leads/' + id, { method: 'POST', body: { stage: stage } }).then(function () {
+			toast('Moved to ' + stageLabel(stage) + '.', 'ok');
+			fpRefresh();
+		}).catch(function (er) { toast(er.message, 'bad'); });
+	}
+
+	/* Quick log from the drawer: one line straight onto the timeline. */
+	function fpQuickLog(id) {
+		var m = modal('Log activity', '<div class="fu-form"><div class="fu-types fu-types--form">' + [['call', 'Call'], ['email', 'Email'], ['meeting', 'Meeting'], ['note', 'Note']].map(function (k, i) {
+			var meta = FT[k[0]] || { i: 'pen', c: '#475467' };
+			return '<button type="button" class="' + (i === 0 ? 'is-on' : '') + '" data-ql="' + k[0] + '" style="--ty:' + meta.c + '">' + icon(meta.i, 15) + '<em>' + k[1] + '</em></button>';
+		}).join('') + '</div><div class="axh-field"><label>Summary</label><input type="text" data-ql-s placeholder="Talked through pricing; wants a start date in March" maxlength="191"></div>' +
+			'<div class="axh-field"><label>Details</label><textarea data-ql-b rows="3"></textarea></div></div>',
+			'<button class="axh-btn axh-btn--ghost" data-close>Cancel</button><button class="axh-btn axh-btn--primary" data-ql-save>Log it</button>');
+		m.querySelector('.axh-modal__box').classList.add('fu-modal');
+		var type = 'call';
+		m.addEventListener('click', function (e) { var b = e.target.closest('[data-ql]'); if (!b) return; type = b.getAttribute('data-ql'); m.querySelectorAll('[data-ql]').forEach(function (x) { x.classList.toggle('is-on', x === b); }); });
+		m.querySelector('[data-ql-save]').onclick = function () {
+			var s = m.querySelector('[data-ql-s]').value.trim();
+			if (!s) { toast('Add a one-line summary.', 'bad'); return; }
+			var label = { call: 'Call', email: 'Email', meeting: 'Meeting', note: 'Note' }[type];
+			api('/flow/log', { method: 'POST', body: { lead_id: id, type: type, subject: label + ': ' + s, body: m.querySelector('[data-ql-b]').value } })
+				.then(function () { closeModal(); toast('Logged.', 'ok'); fpRefresh(); })
+				.catch(function (er) { toast(er.message, 'bad'); });
+		};
+	}
+
+	document.addEventListener('click', function (e) {
+		var t = e.target, hit = function (s) { return t.closest ? t.closest(s) : null; };
+		var b;
+		if ((b = hit('[data-fp-close]'))) { e.stopPropagation(); fpClose(); return; }
+		if ((b = hit('[data-stage="lost"][data-lead]')) && !hit('#fp-drawer')) { e.stopPropagation(); fpLost(b.getAttribute('data-lead'), route); return; }
+		if ((b = hit('[data-fp-attn]'))) { e.stopPropagation(); S.pl.attention = !S.pl.attention; render(viewLeads()); return; }
+		if ((b = hit('[data-fp-stage]'))) {
+			e.stopPropagation();
+			var st = b.getAttribute('data-fp-stage'), id = b.getAttribute('data-lead');
+			if (st === 'won') { var won = document.querySelector('[data-close-deal="' + id + '"],[data-win-req="' + id + '"]'); if (won) won.click(); else location.hash = '#/lead/' + id; return; }
+			fpMove(id, st);
+			return;
+		}
+		if ((b = hit('[data-fp-log]'))) { e.stopPropagation(); fpQuickLog(b.getAttribute('data-fp-log')); return; }
+		if ((b = hit('[data-fp-add]'))) {
+			e.stopPropagation();
+			var stage = b.getAttribute('data-fp-add');
+			S.pl.newStage = stage;
+			var nl = document.querySelector('[data-new]');
+			if (nl) nl.click();
+			return;
+		}
+		if ((b = hit('[data-fp-open]')) && !hit('a[href],button,input,select,label')) { e.stopPropagation(); fpDrawer(b.getAttribute('data-fp-open')); return; }
+	}, true);
+	document.addEventListener('keydown', function (e) {
+		if (e.key === 'Escape' && el('fp-drawer') && el('fp-drawer').classList.contains('is-on') && el('axh-modal').hidden) { fpClose(); return; }
+		if (e.key === 'Enter' && e.target && e.target.hasAttribute && e.target.hasAttribute('data-fp-open')) { e.preventDefault(); e.stopPropagation(); fpDrawer(e.target.getAttribute('data-fp-open')); }
+	}, true);
+	window.addEventListener('hashchange', function () { if (!/^#\/leads/.test(location.hash)) fpClose(); });
+
+	/* A deal added from a column's "+" lands in that column. */
+	function fpAfterCreate(leadId) {
+		var st = S.pl.newStage; S.pl.newStage = null;
+		if (!st || st === 'new') return Promise.resolve();
+		return api('/leads/' + leadId, { method: 'POST', body: { stage: st } }).catch(function () {});
 	}
 
 	/* --------------------------------------------------------- manage */
@@ -5398,8 +6212,8 @@
 			});
 		}
 		if (parts[0] === 'library') return render(viewLibrary());
-		if (parts[0] === 'tasks') return refresh().then(function () { render(viewTasks()); });
-		if (parts[0] === 'leads') return refresh(true).then(function () { render(viewLeads()); });
+		if (parts[0] === 'tasks') return refresh().then(function () { return fuLoad(false); }).then(function () { render(viewTasks()); });
+		if (parts[0] === 'leads') return Promise.all([refresh(true), fuBoard()]).then(function () { render(viewLeads()); });
 		return refresh().then(function () { render(viewDash()); });
 	}
 
@@ -5538,7 +6352,7 @@
 			p.then(function (r) {
 				closeModal();
 				toast(l ? 'Saved.' : 'Lead added.', 'ok');
-				if (l) route(); else location.hash = '#/lead/' + r.lead.id;
+				if (l) route(); else fpAfterCreate(r.lead.id).then(function () { location.hash = '#/lead/' + r.lead.id; });
 			}).catch(function (e) { toast(e.message, 'bad'); });
 		};
 	}
@@ -6186,10 +7000,9 @@
 			else { S.lead = { lead: ld }; winRequestModal(id, ld.est_value); }
 			return;
 		}
-		api('/leads/' + id, { method: 'POST', body: { stage: stage } }).then(function () {
-			toast('Moved to ' + stageLabel(stage) + '.', 'ok');
-			refresh(true).then(function () { render(viewLeads()); });
-		}).catch(function (er) { toast(er.message, 'bad'); });
+		var cur = S.leads.filter(function (x) { return String(x.id) === String(id); })[0];
+		if (cur && cur.stage === stage) return;
+		fpMove(id, stage);
 	});
 
 	/* --------------------------------------------------------- search */
@@ -6250,6 +7063,7 @@
 			render(viewLeads());
 			return;
 		}
+		if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-fp-sort')) { S.pl.sort = e.target.value; render(viewLeads()); return; }
 		if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-rep-filter')) {
 			S.repFilter = e.target.value;
 			refresh(true).then(function () { render(viewLeads()); });
