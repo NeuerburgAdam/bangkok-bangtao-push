@@ -1,0 +1,15 @@
+d41d8cd98f00b204e9800998ecf8427e  hub19/MD5SUMS
+826e6be6079d7989b598c368b9ea111b  hub19/adaptexec-hub-content/decks/player/deck.js
+bad38cb8bb51530c29d60e0c86306b61  hub19/adaptexec-hub-content/decks/player/deck.css
+395150369b2640a0ca6553dd6309ea03  hub19/adaptexec-hub/assets/css/form.css
+7cf55fac8c367fd19ccce8731cffd4a6  hub19/adaptexec-hub/assets/css/hub.css
+18a6e18b7dc139b43dbe323ca678c79c  hub19/adaptexec-hub/assets/js/hub.js
+e5a98f5eba93dc336e3d2b0843b55610  hub19/adaptexec-hub/assets/js/form.js
+977df143c06e56001345d5dc490acc98  hub19/adaptexec-hub/adaptexec-hub.php
+2a7afeccd0f00fc3474c0ff1acce65be  hub19/adaptexec-hub/templates/share-public.php
+710c2c39f3747e71db17bd218a3bee12  hub19/adaptexec-hub/templates/form-public.php
+f2467fc939c8e8c08b5573f87bb1ee49  hub19/adaptexec-hub/includes/class-axh-admin.php
+03e2e5f29876fbd3eba677d37619c407  hub19/adaptexec-hub/includes/class-axh-db.php
+f677811c68d3e1370dcb6cc68dd14333  hub19/adaptexec-hub/includes/class-axh-rest.php
+c6f7c5ed0cd4aed008ace39a56074ddb  hub19/adaptexec-hub/includes/class-axh-portal.php
+2dee421fe7b711d97464092b7f4e65f2  hub19/adaptexec-hub/includes/class-axh-p1.php
